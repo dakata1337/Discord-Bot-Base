@@ -78,30 +78,7 @@ namespace Discord_Bot
 
         private async Task Client_Log(LogMessage arg)
         {
-            ConsoleColor color = ConsoleColor.Gray;
-            switch (arg.Severity)
-            {
-                case LogSeverity.Critical:
-                    color = ConsoleColor.Red;
-                    break;
-                case LogSeverity.Error:
-                    color = ConsoleColor.Red;
-                    break;
-                case LogSeverity.Warning:
-                    color = ConsoleColor.Yellow;
-                    break;
-                case LogSeverity.Info:
-                    color = ConsoleColor.Gray;
-                    break;
-                case LogSeverity.Verbose:
-                    color = ConsoleColor.DarkYellow;
-                    break;
-                case LogSeverity.Debug:
-                    color = ConsoleColor.Yellow;
-                    break;
-            }
-
-            LoggingService.Log(arg.Source, $"{arg.Message}", color);
+            LoggingService.Log(arg.Source, $"{arg.Message}", arg.Severity);
             await Task.CompletedTask;
         }
 
