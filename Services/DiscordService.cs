@@ -10,6 +10,7 @@ using Discord_Bot.DataStrucs;
 using Discord_Bot.Services;
 using Discord_Bot.Handlers;
 using Discord.Commands;
+using MySql.Data.MySqlClient;
 
 namespace Discord_Bot
 {
@@ -18,6 +19,8 @@ namespace Discord_Bot
         private DiscordSocketClient _client;
         private ServiceProvider _services;
         private CommandHandler _commandHandler;
+        private MySQL _mySQL;
+        private MySqlConnection _mySqlConnection;
         private GuildConfigHandler _guildConfigHandler;
         public DiscordService()
         {
@@ -31,6 +34,8 @@ namespace Discord_Bot
             _services = ConfigureServices();
             _client = _services.GetRequiredService<DiscordSocketClient>();
             _commandHandler = _services.GetRequiredService<CommandHandler>();
+            _mySQL = _services.GetRequiredService<MySQL>();
+            _mySqlConnection = _services.GetRequiredService<MySqlConnection>();
             _guildConfigHandler = _services.GetRequiredService<GuildConfigHandler>();
         }
 
@@ -55,7 +60,7 @@ namespace Discord_Bot
 
             //Initialize Command Handler
             await _commandHandler.InitializeAsync();
-
+            
             await Task.Delay(-1);
         }
 
@@ -70,7 +75,14 @@ namespace Discord_Bot
         {
             await _client.SetGameAsync(GlobalData.Config.gameStatus);
 
-            //Initialize Example Module
+            //Initialize MySQL 
+            _mySQL.Initialize(_services);
+            _mySqlConnection = _mySQL.connection;
+
+            //Initialize Guild Config Handler
+            _guildConfigHandler.InitializeConnection(_mySqlConnection);
+
+            //Initialize Command Handler
             await _commandHandler.InitializeAsync();
 
             await Task.CompletedTask;
@@ -88,6 +100,8 @@ namespace Discord_Bot
                 .AddSingleton<DiscordSocketClient>()
                 .AddSingleton<CommandService>()
                 .AddSingleton<CommandHandler>()
+                .AddSingleton<MySQL>()
+                .AddSingleton<MySqlConnection>()
                 .AddSingleton<GuildConfigHandler>()
                 .BuildServiceProvider();
         }

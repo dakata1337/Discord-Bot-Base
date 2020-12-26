@@ -41,7 +41,26 @@ namespace Discord_Bot.DataStrucs
             token = "YourToken",
             gameStatus = "",
             defaultPrefix = "``",
-            guildConfigLocation = "configs"
+            DB_Updatetime = 5000,
+            DB_Server = "",
+            DB_Port = "",
+            DB_User = "",
+            DB_Password = "",
+            DB_Database = ""
         };
+
+    }
+
+    public class BotConfig
+    {
+        public string token { get; set; }
+        public string gameStatus { get; set; }
+        public string defaultPrefix { get; set; }
+        public int DB_Updatetime { get; set; }
+        public string DB_Server { get; set; }
+        public string DB_Port { get; set; }
+        public string DB_User { get; set; }
+        public string DB_Password { get; set; }
+        public string DB_Database { get; set; }
     }
 }

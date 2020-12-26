@@ -18,6 +18,7 @@ namespace Discord_Bot.Handlers
         private readonly DiscordSocketClient _client;
         private readonly CommandService _commands;
         private readonly IServiceProvider _services;
+        public Dictionary<ulong, GuildConfig> GuildConfigs= new Dictionary<ulong, GuildConfig>();
 
         public CommandHandler(IServiceProvider services)
         {
@@ -75,23 +76,24 @@ namespace Discord_Bot.Handlers
             if (!(socketMessage is SocketUserMessage message) || message.Author.IsBot || message.Author.IsWebhook)
                 return Task.CompletedTask;
 
-            //Config Object
-            var jObj = GuildConfigFunctions.GetGuildConfig(context.Guild);
+            //Get Guild Config
+            GuildConfigs.TryGetValue(context.Guild.Id, out GuildConfig guildConfig);
 
-            //Get prefix from Config
-            string serverPrefix = jObj["prefix"].ToString();
+            //If Guild Config is Null - return
+            if(guildConfig is null)
+                return Task.CompletedTask;
 
             //If the message doesnt have prefix - return
-            if (!message.HasStringPrefix(serverPrefix, ref argPos))
+            if (!message.HasStringPrefix(guildConfig.prefix, ref argPos))
                 return Task.CompletedTask;
 
             //If the message is only the prefix - return
-            if (message.Content == serverPrefix)
+            if (message.Content == guildConfig.prefix)
                 return Task.CompletedTask;
 
-
-            ulong[] channels = jObj["whitelistedChannels"].ToObject<ulong[]>();
-            var whitelistedChannelCheck = from a in channels
+            //Get whitelisted channel
+            List<ulong> whitelistedChannels = Array.ConvertAll(guildConfig.whitelistedChannel.Split(';'), ulong.Parse).ToList();
+            var whitelistedChannelCheck = from a in whitelistedChannels
                                           where a == context.Channel.Id
                                           select a;
 

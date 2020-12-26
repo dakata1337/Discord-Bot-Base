@@ -11,7 +11,7 @@ namespace Discord_Bot.Modules
     {
         [Command("Test")]
         public async Task Test() =>
-            await ReplyAsync("Its working!");
+            await ReplyAsync(await GuildConfigHandler.Test(Context));
 
         [Command("Prefix")]
         public async Task Prefix(string prefix) =>

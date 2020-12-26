@@ -1,12 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Discord_Bot.DataStrucs;
+using Discord_Bot.Modules;
+using MySql.Data.MySqlClient;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -14,96 +17,98 @@ namespace Discord_Bot.Handlers
 {
     public class GuildConfigHandler
     {
+        private static MySqlConnection _connection;
+        public void InitializeConnection(MySqlConnection connection)
+            => _connection = connection;
+
+        public static async Task<string> Test(SocketCommandContext context)
+        {
+            return "Done";
+        }
+
+        #region On Guild Join/Left
         //On Guild Join Create Config
         public async Task JoinedGuild(SocketGuild guild)
         {
-            string configLocation = $@"{GlobalData.Config.guildConfigLocation}\{guild.Id}.json";
-
-            //If Config Location doesn't exist, create it
-            if (!Directory.Exists(GlobalData.Config.guildConfigLocation))
-                Directory.CreateDirectory(GlobalData.Config.guildConfigLocation);
-
             //If the guild has config, delete it
-            if (File.Exists(configLocation))
-                File.Delete(configLocation);
-
-            string json = JsonConvert.SerializeObject(GenerateNewConfig(GlobalData.Config.defaultPrefix), Formatting.Indented);
-            var jObj = JsonConvert.DeserializeObject<JObject>(json);
+            if (GuildConfigFunctions.GuildHasConfig(guild, _connection))
+            {
+                GuildConfigFunctions.DeleteGuildConfig(guild, _connection);
+            }
 
             //Guild Defualt Channel
             var defaultChannel = guild.DefaultChannel as SocketTextChannel;
 
-            //If there are 0 Whitelisted Channels add the Default Channel to Whitelist
-            if (jObj["whitelistedChannels"].Value<JArray>().Count == 0)
+            List<ulong> whitelistedChannels = new List<ulong>();
+            if (whitelistedChannels.Count == 0)
             {
-                ulong[] ts = { defaultChannel.Id };
-                jObj["whitelistedChannels"] = JToken.FromObject(ts);
+                //Add Default Channel ID
+                whitelistedChannels.Add(defaultChannel.Id);
+
+                //Create Guild Config
+                GuildConfigFunctions.AddNewGuild(guild, new GuildConfig()
+                {
+                    prefix = GlobalData.Config.defaultPrefix,
+                    whitelistedChannel = string.Join(';', whitelistedChannels)
+                }, _connection);
+
+                //Custome Embed
+                var fields = new List<EmbedFieldBuilder>();
+                fields.Add(new EmbedFieldBuilder
+                {
+                    Name = "**NOTE**",
+                    Value = $"By default, {defaultChannel.Mention} is the default bot channel.\n" +
+                    $"If you want to change it, type {GlobalData.Config.defaultPrefix}whitelist add #YourTextChannel",
+                    IsInline = false
+                });
+
+                //Send Embed
+                await defaultChannel.SendMessageAsync(embed:
+                    await EmbedHandler.CreateCustomEmbed(
+                        guild: guild,
+                        color: Color.DarkTeal,
+                        fields: fields,
+                        embedTitle: "I have arrived!",
+                        footer: $"Thank you for choosing {guild.CurrentUser.Username}"
+                ));
             }
-
-            //Save Guild Config
-            GuildConfigFunctions.SaveGuildConfig(guild, jObj);
-
-            //Custome Embed
-            var fields = new List<EmbedFieldBuilder>();
-            fields.Add(new EmbedFieldBuilder
-            {
-                Name = "**NOTE**",
-                Value = $"By default, {defaultChannel.Mention} is the default bot channel.\n" +
-                $"If you want to change it go to the channel and type {jObj["prefix"]}prefix YourPrefixHere",
-                IsInline = false
-            });
-
-            //Send Embed
-            await defaultChannel.SendMessageAsync(embed:
-                await EmbedHandler.CreateCustomEmbed(
-                    guild: guild,
-                    color: Color.Blue,
-                    fields: fields,
-                    embedTitle: "I have arrived!", 
-                    footer: $"Thank you for choosing {guild.CurrentUser.Username}"
-                )); 
-
             await Task.CompletedTask;
         }
-
-        //Generate Config
-        public GuildConfig GenerateNewConfig(string prefix) => new GuildConfig
-        {
-            prefix = prefix,
-            whitelistedChannels = new List<ulong>()
-        };
 
         //On Left Guild Delete Config
         public Task LeftGuild(SocketGuild guild)
         {
-            string configFile = GuildConfigFunctions.GetConfigLocation(guild);
-            if (File.Exists(configFile))
-                File.Delete(configFile);
-
+            if (GuildConfigFunctions.GuildHasConfig(guild, _connection))
+            {
+                GuildConfigFunctions.DeleteGuildConfig(guild, _connection);
+            }
             return Task.CompletedTask;
         }
+        #endregion
 
-        public static async Task<Embed> ChangePrefix(SocketCommandContext context, string prefix)
+        #region Prefix/Whitelist Commands
+        public static async Task<Embed> ChangePrefix(SocketCommandContext context, string newPrefix)
         {
             //If prefix lenght is more than 5 chars long
-            if (prefix.Length > 5)
+            if (newPrefix.Length > 5)
             {
-                return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"The prefix is to long. Must be 15 characters or less.");
+                return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"The prefix is to long. Must be 5 characters or less.");
             }
 
             //Get Guild Config
-            var jObj = GuildConfigFunctions.GetGuildConfig(context.Guild);
+            var config = GuildConfigFunctions.GetGuildConfig(context.Guild, _connection);
+
+            //Get Guild Prefix from Config
+            string oldPrefix = config.prefix;
 
             //If the Selected Prefix is already the Prefix
-            if ((string)jObj["prefix"] == prefix)
-                return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"\"{prefix}\" is already the prefix.");
+            if (oldPrefix == newPrefix)
+                return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"\"{newPrefix}\" is already the prefix.");
 
             //Update Config
-            jObj["prefix"] = prefix;
+            GuildConfigFunctions.UpdateGuildConfig(context.Guild, "prefix", newPrefix, _connection);
 
-            //Save Config
-            GuildConfigFunctions.SaveGuildConfig(context.Guild, jObj);
-            return await EmbedHandler.CreateBasicEmbed("Configuration Changed.", $"The prefix was successfully changed to \"{prefix}\".");
+            return await EmbedHandler.CreateBasicEmbed("Configuration Changed.", $"The prefix was successfully changed to \"{newPrefix}\".");
         }
 
         public static async Task<Embed> WhiteList(SocketCommandContext context, string arg, IChannel channel)
@@ -121,19 +126,18 @@ namespace Discord_Bot.Handlers
             }
 
             //Get Guild Config
-            var jObj = GuildConfigFunctions.GetGuildConfig(context.Guild);
+            var guildConfig = GuildConfigFunctions.GetGuildConfig(context.Guild, _connection);
 
             //Get Whitelisted Channel
-            ulong[] whitelistedChannels = jObj["whitelistedChannels"].ToObject<ulong[]>();
-            List<ulong> newList = new List<ulong>(whitelistedChannels);
+            List<ulong> whitelistedChannels = Array.ConvertAll(guildConfig.whitelistedChannel.Split(';'), ulong.Parse).ToList();
 
             switch (arg)
             {
                 #region Add Channel to Whitelist
                 case "add":
-                    //Limits the whitelisted channels to 100
-                    int limit = 100;
-                    if (whitelistedChannels.Length > limit) 
+                    //Limits the whitelisted channels to 5
+                    int limit = 5;
+                    if (whitelistedChannels.Count > limit) 
                         return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"You have reached the maximum of {limit} whitelisted channels.");
 
                     //Check If the channel is already whitelisted
@@ -141,45 +145,39 @@ namespace Discord_Bot.Handlers
                         if (item == channel.Id)
                             return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"{context.Guild.GetChannel(item)} is already whitelisted!");
 
-                    //Add the Channel Id to the List
-                    newList.Add(channel.Id);
+                    //Add Channel to Whitelist
+                    whitelistedChannels.Add(channel.Id);
 
-                    //Overwrite the jObj file with the updated List
-                    jObj["whitelistedChannels"] = JToken.FromObject(newList.ToArray());
-
-                    //Saving to file
-                    GuildConfigFunctions.SaveGuildConfig(context.Guild, jObj);
+                    //Update Config
+                    GuildConfigFunctions.UpdateGuildConfig(context.Guild, "whitelistedChannel", $"{string.Join(';', whitelistedChannels)}", _connection);
 
                     return await EmbedHandler.CreateBasicEmbed("Configuration Changed.", $"{context.Guild.GetChannel(channel.Id)} was whitelisted.");
                 #endregion
 
                 #region Remove Channel from Whitelist
                 case "remove":
-                    if (newList.Count == 1)
+                    if (whitelistedChannels.Count == 1)
                         return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"You can't have less than 1 whitelisted channel.");
 
-                    bool found = false;
+                    bool notFound = true;
                     foreach (ulong item in whitelistedChannels)
                     {
                         if (item == channel.Id)
                         {
-                            found = true;
+                            notFound = false;
                             break;
                         }
                     }
 
-                    //If the channel is not whitelisted
-                    if (!found)
+                    //If the Channel is not Whitelisted
+                    if (notFound)
                         return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"{context.Guild.GetChannel(channel.Id)} is not whitelisted.");
 
-                    //Remove Channel Id from the List
-                    newList.Remove(channel.Id);
+                    //Remove Channel from Whitelist
+                    whitelistedChannels.Remove(channel.Id);
 
-                    //Overwrite the jObj file with the updated List
-                    jObj["whitelistedChannels"] = JToken.FromObject(newList.ToArray());
-
-                    //Saving to file
-                    GuildConfigFunctions.SaveGuildConfig(context.Guild, jObj);
+                    //Update Config
+                    GuildConfigFunctions.UpdateGuildConfig(context.Guild, "whitelistedChannel", $"{string.Join(';', whitelistedChannels)}", _connection);
 
                     return await EmbedHandler.CreateBasicEmbed("Configuration Changed.", $"{context.Guild.GetChannel(channel.Id)} was removed from the whitelist.");
                 #endregion
@@ -188,7 +186,7 @@ namespace Discord_Bot.Handlers
                 case "list":
                     StringBuilder builder = new StringBuilder();
                     builder.Append("**Whitelisted channels:**\n");
-                    for (int i = 0; i < whitelistedChannels.Length; i++)
+                    for (int i = 0; i < whitelistedChannels.Count; i++)
                     {
                         var whitelistedChannel = context.Guild.GetChannel(whitelistedChannels[i]);
                         builder.Append($"{i + 1}. {whitelistedChannel.Name} (ID: {whitelistedChannel.Id})\n");
@@ -199,6 +197,85 @@ namespace Discord_Bot.Handlers
                 default:
                     return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"{arg} is not a valid argument.");
             }
+        }
+        #endregion
+    }
+
+    public static class GuildConfigFunctions
+    {
+        public static GuildConfig GetGuildConfig(IGuild guild, MySqlConnection connection)
+        {
+            var guildConfig = new GuildConfig();
+            var sql = $"SELECT * FROM GuildConfigurable WHERE guildID = '{guild.Id}'";
+            using (var cmd = new MySqlCommand(sql, connection))
+            {
+                using (var data_reader = cmd.ExecuteReader())
+                {
+                    while (data_reader.Read())
+                    {
+                        guildConfig.prefix = data_reader.GetValue(1).ToString();
+                        guildConfig.whitelistedChannel = data_reader.GetValue(2).ToString();
+                    }
+                }
+            }
+            return guildConfig;
+        }
+
+        public static void UpdateGuildConfig(IGuild guild, string whatToUpdate, string value, MySqlConnection connection)
+        {
+            string sql = $"UPDATE GuildConfigurable SET {whatToUpdate} = '{value}' WHERE guildID = '{guild.Id}'";
+            MySqlCommand cmd = new MySqlCommand(sql, connection);
+            cmd.ExecuteNonQuery();
+        }
+
+        public static void AddNewGuild(IGuild guild, GuildConfig guildConfig, MySqlConnection connection)
+        {
+            var sqlCommands = new string[]
+            {
+                $"INSERT INTO Guilds VALUES('{guild.Id}')",
+                $"INSERT INTO GuildConfigurable VALUES ('{guild.Id}', '{guildConfig.prefix}', '{guildConfig.whitelistedChannel}')"
+            };
+            foreach (var sql in sqlCommands)
+            {
+                using (var cmd = new MySqlCommand(sql, connection))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public static void DeleteGuildConfig(IGuild guild, MySqlConnection connection)
+        {
+            var sqlCommands = new string[]
+            {
+                $"DELETE FROM Guilds WHERE guildID = '{guild.Id}'",
+                $"DELETE FROM GuildConfigurable WHERE guildID = '{guild.Id}'"
+            };
+
+            foreach (var sql in sqlCommands)
+            {
+                using (var cmd = new MySqlCommand(sql, connection))
+                {
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        public static bool GuildHasConfig(IGuild guild, MySqlConnection connection)
+        {
+            var cmdText = $"SELECT EXISTS(SELECT * FROM GuildConfigurable WHERE guildID = '{guild.Id}')";
+            using (var cmd = new MySqlCommand(cmdText, connection))
+            {
+                using (var data_reader = cmd.ExecuteReader())
+                {
+                    while (data_reader.Read())
+                    {
+                        if (data_reader.GetValue(0).ToString() == "1")
+                            return true;
+                    }
+                }
+            }
+            return false;
         }
     }
 }

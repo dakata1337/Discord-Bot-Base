@@ -9,5 +9,4 @@
 * [Microsoft Dependency Injection (Version - 5.0.1)](https://docs.microsoft.com/en-us/aspnet/core/fundamentals/dependency-injection?view=aspnetcore-5.0) - Microsoft Dependency Injection
 
 ## To do List:
-* Use sometype of Database, to save Guild data, instead of .json files.
 * Comment the code.
