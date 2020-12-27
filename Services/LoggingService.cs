@@ -14,7 +14,7 @@ namespace Discord_Bot.Services
         private static BlockingCollection<string> messageQueue = new BlockingCollection<string>();
         private static BlockingCollection<ConsoleColor> colorQueue = new BlockingCollection<ConsoleColor>();
 
-        public async static Task InitializeAsync()
+        public static void Initialize()
         {
             Thread thread = new Thread(() => 
             {

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using System.Threading;
 
 namespace Discord_Bot.DataStrucs
 {
@@ -14,7 +15,7 @@ namespace Discord_Bot.DataStrucs
         private static string configPath { get; set; } = $"{configName}";
         public static BotConfig Config { get; set; }
 
-        public static async Task InitializeAsync()
+        public static void Initialize()
         {
             var json = string.Empty;
 
@@ -23,7 +24,7 @@ namespace Discord_Bot.DataStrucs
                 json = JsonConvert.SerializeObject(GenerateNewConfig(), Formatting.Indented);
                 File.WriteAllText(configPath, json, new UTF8Encoding(true));
                 LoggingService.Log("Config", $"{configName} was created. Please modify the config to your liking.");
-                await Task.Delay(-1);
+                Thread.Sleep(-1);
             }
 
             json = File.ReadAllText(configPath, new UTF8Encoding(true));
@@ -32,7 +33,7 @@ namespace Discord_Bot.DataStrucs
             if(Config.token == "YourToken")
             {
                 LoggingService.Log("Config", "You didn't configure the config!", ConsoleColor.Red);
-                await Task.Delay(-1);
+                Thread.Sleep(-1);
             }
         }
 
@@ -41,7 +42,7 @@ namespace Discord_Bot.DataStrucs
             token = "YourToken",
             gameStatus = "",
             defaultPrefix = "``",
-            DB_Updatetime = 5000,
+            cacheUpdateTime = 2000,
             DB_Server = "",
             DB_Port = "",
             DB_User = "",
@@ -56,7 +57,7 @@ namespace Discord_Bot.DataStrucs
         public string token { get; set; }
         public string gameStatus { get; set; }
         public string defaultPrefix { get; set; }
-        public int DB_Updatetime { get; set; }
+        public int cacheUpdateTime { get; set; }
         public string DB_Server { get; set; }
         public string DB_Port { get; set; }
         public string DB_User { get; set; }

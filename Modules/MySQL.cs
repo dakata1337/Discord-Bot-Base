@@ -1,4 +1,5 @@
-﻿using Discord.WebSocket;
+﻿using Discord;
+using Discord.WebSocket;
 using Discord_Bot.DataStrucs;
 using Discord_Bot.Handlers;
 using Discord_Bot.Services;
@@ -17,11 +18,17 @@ namespace Discord_Bot.Modules
         public MySqlConnection connection;
         private CommandHandler _commandHandler;
         private DiscordSocketClient _client;
-        public void Initialize(ServiceProvider _services)
+
+        public MySQL(IServiceProvider _services)
         {
             _commandHandler = _services.GetRequiredService<CommandHandler>();
             _client = _services.GetRequiredService<DiscordSocketClient>();
 
+            Initialize();
+        }
+
+        public void Initialize()
+        {
             var config = GlobalData.Config;     
             try
             {
@@ -37,8 +44,8 @@ namespace Discord_Bot.Modules
                 connection = new MySqlConnection(connStr.GetConnectionString(true));
                 connection.Open();
 
-                Thread guildPrefixUpdate = new Thread(new ThreadStart(UpdateGuildConfigs));
-                guildPrefixUpdate.Start();
+                Thread guildConfigUpdate = new Thread(new ThreadStart(UpdateGuildConfigs));
+                guildConfigUpdate.Start();
 
 
                 LoggingService.Log("MySQL", $"Succsessfully connected to {config.DB_Server}:{config.DB_Port} - Database: {config.DB_Database}");
@@ -59,25 +66,43 @@ namespace Discord_Bot.Modules
                 {
                     try
                     {
-                        MySqlCommand cmd = new MySqlCommand($"SELECT * FROM GuildConfigurable WHERE guildID = '{guild.Id}'", connection);
-
-                        using (var data_reader = cmd.ExecuteReader())
+                        if (GuildConfigFunctions.GuildHasConfig(guild, connection))
                         {
-                            if (!data_reader.HasRows)
-                                continue;
-
-                            var count = data_reader.FieldCount;
-                            while (data_reader.Read())
-                            {
-                                var guildConfig = new GuildConfig();
-
-                                guildConfig.prefix = data_reader.GetValue(1).ToString();
-                                guildConfig.whitelistedChannel = data_reader.GetValue(2).ToString();
-
-                                Configs.Add(guild.Id, guildConfig);
-                            }
+                            Configs.Add(guild.Id, GuildConfigFunctions.GetGuildConfig(guild, connection));
                         }
-                        
+                        else
+                        {
+                            GuildConfigFunctions.CreateGuildConfig(guild, connection);
+
+                            List<EmbedFieldBuilder> fields = new List<EmbedFieldBuilder>();
+                            fields.Add(new EmbedFieldBuilder
+                            {
+                                Name = "**I'm sorry for being late**",
+                                Value = $"We had some technical difficulties.\n" +
+                                $"Everything should be normal by now.",
+                                IsInline = false
+                            });
+
+                            fields.Add(new EmbedFieldBuilder
+                            {
+                                Name = "**Please Note**",
+                                Value = $"By default, {guild.DefaultChannel.Mention} is the default bot channel.\n" +
+                                $"If you want to change it, type {GlobalData.Config.defaultPrefix}whitelist add #YourTextChannel",
+                                IsInline = false
+                            });
+
+                            Task.Run(async () =>
+                            {
+                                await guild.DefaultChannel.SendMessageAsync(embed: await EmbedHandler.CreateCustomEmbed(
+                                    guild: guild,
+                                    embedTitle: "Oh oh..",
+                                    fields: fields,
+                                    color: Color.DarkTeal,
+                                    footer: $"Thank you for choosing {guild.CurrentUser.Username}"
+                                ));
+                            });
+                            
+                        }
                     }
                     catch (Exception e)
                     {
@@ -88,7 +113,7 @@ namespace Discord_Bot.Modules
                 //LoggingService.Log("UGC", $"Updated all guild configs ({Configs.Count})");
                 _commandHandler.GuildConfigs = Configs;
 
-                Thread.Sleep(GlobalData.Config.DB_Updatetime);
+                Thread.Sleep(GlobalData.Config.cacheUpdateTime);
             }
         }
     }

@@ -45,6 +45,9 @@ namespace Discord_Bot.Handlers
             //If an Error Occurs send to Discord
             if (!command.IsSpecified || !result.IsSuccess)
             {
+                #if DEBUG
+                LoggingService.Log("CommandExecution", $"{context.Message.Author.Username} => {context.Message} => {result.ErrorReason}", ConsoleColor.Red);
+                #endif
                 await context.Channel.SendMessageAsync(embed: await EmbedHandler.CreateErrorEmbed("Error.", result.ErrorReason));
             }
         }

@@ -50,35 +50,31 @@ namespace Discord_Bot.Handlers
         /// <summary>
         /// Creates Advanced Discord Embed. 
         /// </summary>
-        public static async Task<Embed> CreateCustomEmbed(SocketGuild guild, Color color, List<EmbedFieldBuilder> fields, string embedTitle)
+        public static async Task<Embed> CreateCustomEmbed(SocketGuild guild, string embedTitle, List<EmbedFieldBuilder> fields, Color color)
         {
             var embed = await Task.Run(() => new EmbedBuilder
             {
-                Title = embedTitle,
                 Timestamp = DateTime.UtcNow,
-                Color = color,
-                Fields = fields
+                Title = embedTitle,
+                Fields = fields,
+                Color = color
             });
-
             return embed.Build();
         }
 
         /// <summary>
         /// Creates Advanced Discord Embed. 
         /// </summary>
-        public static async Task<Embed> CreateCustomEmbed(SocketGuild guild, Color color, List<EmbedFieldBuilder> fields, string embedTitle, string footer)
+        public static async Task<Embed> CreateCustomEmbed(SocketGuild guild, string embedTitle, List<EmbedFieldBuilder> fields, string footer, Color color)
         {
             var embed = await Task.Run(() => new EmbedBuilder
             {
-                Title = embedTitle,
                 Timestamp = DateTime.UtcNow,
+                Title = embedTitle,
+                Fields = fields,
+                Footer = new EmbedFooterBuilder { Text = $"{footer}", IconUrl = guild.CurrentUser.GetAvatarUrl() },
                 Color = color,
-                Fields = fields
             });
-
-            if (!(footer is null))
-                embed.Footer = new EmbedFooterBuilder { Text = $"{footer}", IconUrl = guild.CurrentUser.GetAvatarUrl() };
-
             return embed.Build();
         }
     }

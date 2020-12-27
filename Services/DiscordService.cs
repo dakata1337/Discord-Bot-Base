@@ -2,7 +2,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Discord;
-using Discord.Webhook;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using Discord_Bot.Modules;
@@ -10,7 +9,6 @@ using Discord_Bot.DataStrucs;
 using Discord_Bot.Services;
 using Discord_Bot.Handlers;
 using Discord.Commands;
-using MySql.Data.MySqlClient;
 
 namespace Discord_Bot
 {
@@ -20,10 +18,15 @@ namespace Discord_Bot
         private ServiceProvider _services;
         private CommandHandler _commandHandler;
         private MySQL _mySQL;
-        private MySqlConnection _mySqlConnection;
         private GuildConfigHandler _guildConfigHandler;
         public DiscordService()
         {
+            //Initialize Logger
+            LoggingService.Initialize();
+
+            //Initialize Config
+            GlobalData.Initialize();
+
             InitializeServices();
 
             SubscribeDiscordEvents();
@@ -35,7 +38,6 @@ namespace Discord_Bot
             _client = _services.GetRequiredService<DiscordSocketClient>();
             _commandHandler = _services.GetRequiredService<CommandHandler>();
             _mySQL = _services.GetRequiredService<MySQL>();
-            _mySqlConnection = _services.GetRequiredService<MySqlConnection>();
             _guildConfigHandler = _services.GetRequiredService<GuildConfigHandler>();
         }
 
@@ -49,22 +51,15 @@ namespace Discord_Bot
 
         public async Task InitializeAsync()
         {
-            //Initialize Logger
-            await LoggingService.InitializeAsync();
-
-            //Initialize Config
-            await GlobalData.InitializeAsync();
+            //Initialize Command Handler
+            await _commandHandler.InitializeAsync();
 
             //Connect Discord Client
             await ClientConnect();
 
-            //Initialize Command Handler
-            await _commandHandler.InitializeAsync();
-            
             await Task.Delay(-1);
         }
 
-       
         private async Task ClientConnect()
         {
             await _client.LoginAsync(TokenType.Bot, GlobalData.Config.token);
@@ -74,16 +69,6 @@ namespace Discord_Bot
         private async Task OnClientReady()
         {
             await _client.SetGameAsync(GlobalData.Config.gameStatus);
-
-            //Initialize MySQL 
-            _mySQL.Initialize(_services);
-            _mySqlConnection = _mySQL.connection;
-
-            //Initialize Guild Config Handler
-            _guildConfigHandler.InitializeConnection(_mySqlConnection);
-
-            //Initialize Command Handler
-            await _commandHandler.InitializeAsync();
 
             await Task.CompletedTask;
         }
@@ -100,8 +85,8 @@ namespace Discord_Bot
                 .AddSingleton<DiscordSocketClient>()
                 .AddSingleton<CommandService>()
                 .AddSingleton<CommandHandler>()
+                .AddSingleton<Commands>()
                 .AddSingleton<MySQL>()
-                .AddSingleton<MySqlConnection>()
                 .AddSingleton<GuildConfigHandler>()
                 .BuildServiceProvider();
         }

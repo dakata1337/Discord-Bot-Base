@@ -9,31 +9,29 @@ using Discord.Commands;
 using Discord.WebSocket;
 using Discord_Bot.DataStrucs;
 using Discord_Bot.Modules;
+using Discord_Bot.Services;
+using Microsoft.Extensions.DependencyInjection;
 using MySql.Data.MySqlClient;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Discord_Bot.Handlers
 {
     public class GuildConfigHandler
     {
+        private static MySQL _mySQL;
         private static MySqlConnection _connection;
-        public void InitializeConnection(MySqlConnection connection)
-            => _connection = connection;
-
-        public static async Task<string> Test(SocketCommandContext context)
+        public GuildConfigHandler(IServiceProvider serviceProvider)
         {
-            return "Done";
+            _mySQL = serviceProvider.GetRequiredService<MySQL>();
+            _connection = _mySQL.connection;
         }
 
-        #region On Guild Join/Left
         //On Guild Join Create Config
         public async Task JoinedGuild(SocketGuild guild)
         {
             //If the guild has config, delete it
             if (GuildConfigFunctions.GuildHasConfig(guild, _connection))
             {
-                GuildConfigFunctions.DeleteGuildConfig(guild, _connection);
+                GuildConfigFunctions.RemoveGuildConfig(guild, _connection);
             }
 
             //Guild Defualt Channel
@@ -46,17 +44,13 @@ namespace Discord_Bot.Handlers
                 whitelistedChannels.Add(defaultChannel.Id);
 
                 //Create Guild Config
-                GuildConfigFunctions.AddNewGuild(guild, new GuildConfig()
-                {
-                    prefix = GlobalData.Config.defaultPrefix,
-                    whitelistedChannel = string.Join(';', whitelistedChannels)
-                }, _connection);
+                GuildConfigFunctions.CreateGuildConfig(guild, _connection);
 
-                //Custome Embed
+                //Custom Embed
                 var fields = new List<EmbedFieldBuilder>();
                 fields.Add(new EmbedFieldBuilder
                 {
-                    Name = "**NOTE**",
+                    Name = "**Please Note**",
                     Value = $"By default, {defaultChannel.Mention} is the default bot channel.\n" +
                     $"If you want to change it, type {GlobalData.Config.defaultPrefix}whitelist add #YourTextChannel",
                     IsInline = false
@@ -80,13 +74,11 @@ namespace Discord_Bot.Handlers
         {
             if (GuildConfigFunctions.GuildHasConfig(guild, _connection))
             {
-                GuildConfigFunctions.DeleteGuildConfig(guild, _connection);
+                GuildConfigFunctions.RemoveGuildConfig(guild, _connection);
             }
             return Task.CompletedTask;
         }
-        #endregion
 
-        #region Prefix/Whitelist Commands
         public static async Task<Embed> ChangePrefix(SocketCommandContext context, string newPrefix)
         {
             //If prefix lenght is more than 5 chars long
@@ -198,42 +190,16 @@ namespace Discord_Bot.Handlers
                     return await EmbedHandler.CreateErrorEmbed("Configuration Error.", $"{arg} is not a valid argument.");
             }
         }
-        #endregion
     }
 
     public static class GuildConfigFunctions
     {
-        public static GuildConfig GetGuildConfig(IGuild guild, MySqlConnection connection)
-        {
-            var guildConfig = new GuildConfig();
-            var sql = $"SELECT * FROM GuildConfigurable WHERE guildID = '{guild.Id}'";
-            using (var cmd = new MySqlCommand(sql, connection))
-            {
-                using (var data_reader = cmd.ExecuteReader())
-                {
-                    while (data_reader.Read())
-                    {
-                        guildConfig.prefix = data_reader.GetValue(1).ToString();
-                        guildConfig.whitelistedChannel = data_reader.GetValue(2).ToString();
-                    }
-                }
-            }
-            return guildConfig;
-        }
-
-        public static void UpdateGuildConfig(IGuild guild, string whatToUpdate, string value, MySqlConnection connection)
-        {
-            string sql = $"UPDATE GuildConfigurable SET {whatToUpdate} = '{value}' WHERE guildID = '{guild.Id}'";
-            MySqlCommand cmd = new MySqlCommand(sql, connection);
-            cmd.ExecuteNonQuery();
-        }
-
-        public static void AddNewGuild(IGuild guild, GuildConfig guildConfig, MySqlConnection connection)
+        public static void CreateGuildConfig(IGuild guild, MySqlConnection connection)
         {
             var sqlCommands = new string[]
             {
                 $"INSERT INTO Guilds VALUES('{guild.Id}')",
-                $"INSERT INTO GuildConfigurable VALUES ('{guild.Id}', '{guildConfig.prefix}', '{guildConfig.whitelistedChannel}')"
+                $"INSERT INTO GuildConfigurable VALUES ('{guild.Id}', '{GlobalData.Config.defaultPrefix}', '{guild.DefaultChannelId}')"
             };
             foreach (var sql in sqlCommands)
             {
@@ -244,7 +210,7 @@ namespace Discord_Bot.Handlers
             }
         }
 
-        public static void DeleteGuildConfig(IGuild guild, MySqlConnection connection)
+        public static void RemoveGuildConfig(IGuild guild, MySqlConnection connection)
         {
             var sqlCommands = new string[]
             {
@@ -260,11 +226,35 @@ namespace Discord_Bot.Handlers
                 }
             }
         }
+        public static GuildConfig GetGuildConfig(IGuild guild, MySqlConnection connection)
+        {
+            var guildConfig = new GuildConfig();
+            var command = $"SELECT * FROM GuildConfigurable WHERE guildID = '{guild.Id}'";
+            using (var cmd = new MySqlCommand(command, connection))
+            {
+                using (var data_reader = cmd.ExecuteReader())
+                {
+                    while (data_reader.Read())
+                    {
+                        guildConfig.prefix = data_reader.GetValue(1).ToString();
+                        guildConfig.whitelistedChannel = data_reader.GetValue(2).ToString();
+                    }
+                }
+            }
+            return guildConfig;
+        }
+
+        public static void UpdateGuildConfig(IGuild guild, string whatToUpdate, string value, MySqlConnection connection)
+        {
+            string command = $"UPDATE GuildConfigurable SET {whatToUpdate} = '{value}' WHERE guildID = '{guild.Id}'";
+            MySqlCommand cmd = new MySqlCommand(command, connection);
+            cmd.ExecuteNonQuery();
+        }
 
         public static bool GuildHasConfig(IGuild guild, MySqlConnection connection)
         {
-            var cmdText = $"SELECT EXISTS(SELECT * FROM GuildConfigurable WHERE guildID = '{guild.Id}')";
-            using (var cmd = new MySqlCommand(cmdText, connection))
+            var command = $"SELECT EXISTS(SELECT * FROM GuildConfigurable WHERE guildID = '{guild.Id}')";
+            using (var cmd = new MySqlCommand(command, connection))
             {
                 using (var data_reader = cmd.ExecuteReader())
                 {
