@@ -75,6 +75,10 @@ namespace Discord_Bot.Handlers
             var argPos = 0;
             var context = new SocketCommandContext(_client, socketMessage as SocketUserMessage);
 
+            //If the Message context is DM - return
+            if (socketMessage.Channel is IDMChannel)
+                return Task.CompletedTask;
+
             //If the message is from Bot/Webhook - return
             if (!(socketMessage is SocketUserMessage message) || message.Author.IsBot || message.Author.IsWebhook)
                 return Task.CompletedTask;
